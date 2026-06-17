@@ -112,7 +112,11 @@
   .fund-profit.good{color:var(--good);}
   .fund-profit.bad{color:var(--bad);}
   .fund-invested{font-size:10.5px;color:var(--muted);margin-top:6px;}
-  .fund-nav{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
+  .fund-nav-row{display:flex;align-items:baseline;gap:7px;margin-top:5px;flex-wrap:wrap;}
+  .fund-nav-price{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--ink);}
+  .fund-daily{font-size:10px;color:var(--muted);}
+  .fund-daily.good{color:var(--good);}
+  .fund-daily.bad{color:var(--bad);}
 
   /* ADD FORM */
   .field{margin-bottom:12px;}
@@ -565,20 +569,36 @@
   }
 
   /* ---------- render: fund grid ---------- */
+  function dailyChangeForFund(fundKey){
+    var hist = state.history[fundKey];
+    if (!hist || hist.length<2) return null;
+    var last = hist[hist.length-1], prev = hist[hist.length-2];
+    var diff = last.value - prev.value;
+    var pct = prev.value!==0 ? diff/prev.value*100 : 0;
+    return { diff: diff, pct: pct };
+  }
+
   function renderFundsGrid(agg){
     var html = FUNDS.map(function(f){
       var pf = agg.perFund[f.key];
       var pg = pf.profit>=0?'good':'bad';
       var arrow = pf.profit>=0?'↑':'↓';
-      var priceInfo = state.prices[f.key]
-        ? '<div class="fund-nav">курс ' + state.prices[f.key].nav.toFixed(2) + ' € · ' + fmtDateShort(state.prices[f.key].asOf) + '</div>'
-        : '<div class="fund-nav">курс пока не обновлялся</div>';
+      var priceLine;
+      if (state.prices[f.key]){
+        var dc = dailyChangeForFund(f.key);
+        var dailyHtml = dc
+          ? '<span class="fund-daily ' + (dc.diff>=0?'good':'bad') + '">' + (dc.diff>=0?'↑':'↓') + ' ' + fmtPct(dc.pct) + ' за день</span>'
+          : '<span class="fund-daily">за день пока нет данных</span>';
+        priceLine = '<div class="fund-nav-row"><span class="fund-nav-price">' + state.prices[f.key].nav.toFixed(2) + ' €</span>' + dailyHtml + '</div>';
+      } else {
+        priceLine = '<div class="fund-nav-row"><span class="fund-nav-price">курс не обновлялся</span></div>';
+      }
       return '<div class="fund-card" data-fund="' + f.key + '">' +
         '<div class="fund-card-top"><span class="fund-dot" style="background:' + f.color + '"></span><span class="fund-name">' + f.name + '</span></div>' +
         '<div class="fund-val">' + fmtEUR(pf.current) + '</div>' +
         '<div class="fund-profit ' + pg + '">' + arrow + ' ' + fmtEUR(Math.abs(pf.profit)) + ' (' + fmtPct(pf.profitPct) + ')</div>' +
         '<div class="fund-invested">вложено ' + fmtEUR(pf.invested) + '</div>' +
-        priceInfo +
+        priceLine +
       '</div>';
     }).join('');
     document.getElementById('fundsGrid').innerHTML = html;
@@ -616,7 +636,9 @@
       '</div>';
     }).join('');
     Array.prototype.forEach.call(list.querySelectorAll('[data-del]'), function(btn){
-      btn.addEventListener('click', function(){ deleteTransaction(btn.getAttribute('data-del')); });
+      btn.addEventListener('click', function(){
+        if (window.confirm('Удалить этот взнос? Это нельзя отменить.')) deleteTransaction(btn.getAttribute('data-del'));
+      });
     });
     Array.prototype.forEach.call(list.querySelectorAll('[data-edit]'), function(btn){
       btn.addEventListener('click', function(){ openEditModal(btn.getAttribute('data-edit')); });
