@@ -114,9 +114,8 @@
   .fund-profit.good{color:var(--good);}
   .fund-profit.bad{color:var(--bad);}
   .fund-invested{font-size:10.5px;color:var(--muted);margin-top:6px;}
-  .fund-nav-row{display:flex;align-items:baseline;gap:7px;margin-top:5px;flex-wrap:wrap;}
-  .fund-nav-price{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--ink);}
-  .fund-daily{font-size:10px;color:var(--muted);}
+  .fund-nav-price{font-family:var(--mono);font-weight:700;font-size:12px;color:var(--ink);margin-top:5px;}
+  .fund-daily{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px;}
   .fund-daily.good{color:var(--good);}
   .fund-daily.bad{color:var(--bad);}
 
@@ -160,7 +159,6 @@
   .modal-stats{display:flex;gap:10px;margin:14px 0;}
 
   .footnote{font-size:11px;color:var(--muted);text-align:center;line-height:1.5;margin-top:6px;}
-  #ledgerList{max-height:362px;overflow-y:auto;}
   #ledgerList::-webkit-scrollbar{width:4px;}
   #ledgerList::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
 
@@ -606,11 +604,11 @@
       if (state.prices[f.key]){
         var dc = dailyChangeForFund(f.key);
         var dailyHtml = dc
-          ? '<span class="fund-daily ' + (dc.diff>=0?'good':'bad') + '">' + (dc.diff>=0?'↑':'↓') + ' ' + fmtPct(dc.pct) + ' за день</span>'
-          : '<span class="fund-daily">за день пока нет данных</span>';
-        priceLine = '<div class="fund-nav-row"><span class="fund-nav-price">' + state.prices[f.key].nav.toFixed(2) + ' €</span>' + dailyHtml + '</div>';
+          ? '<div class="fund-daily ' + (dc.diff>=0?'good':'bad') + '">' + (dc.diff>=0?'↑':'↓') + ' ' + fmtEUR(Math.abs(dc.diff)) + ' (' + fmtPct(dc.pct) + ') за день</div>'
+          : '<div class="fund-daily">за день пока нет данных</div>';
+        priceLine = '<div class="fund-nav-price">курс ' + state.prices[f.key].nav.toFixed(2) + ' €</div>' + dailyHtml;
       } else {
-        priceLine = '<div class="fund-nav-row"><span class="fund-nav-price">курс не обновлялся</span></div>';
+        priceLine = '<div class="fund-nav-price">курс не обновлялся</div>';
       }
       return '<div class="fund-card" data-fund="' + f.key + '">' +
         '<div class="fund-card-top"><span class="fund-dot" style="background:' + f.color + '"></span><span class="fund-name">' + f.name + '</span></div>' +
@@ -632,8 +630,9 @@
   /* ---------- render: ledger ---------- */
   function renderLedger(){
     var list = document.getElementById('ledgerList');
+    if (!list) return;
     if (state.transactions.length===0){
-      list.innerHTML = '<div class="empty-state">Взносов пока нет — добавь первый выше.</div>';
+      list.innerHTML = '<div class="empty-state">Взносов пока нет — добавь через кнопку "+".</div>';
       return;
     }
     var sorted = state.transactions.slice().sort(function(a,b){ return a.date < b.date ? 1 : -1; });
@@ -725,9 +724,9 @@
       }
 
       await syncPortfolioSnapshot();
-      closeModal();
       showToast('Изменения сохранены');
       renderAll();
+      openLedgerModal();
     } catch(e){ showToast('Не удалось сохранить: ' + e.message); }
   }
 
@@ -874,6 +873,9 @@
     document.getElementById('page').innerHTML = '' +
       '<div class="topbar">' +
         '<div class="page-title">Investments</div>' +
+        '<button class="icon-btn" id="ledgerBtn" title="Все взносы" style="position:absolute;right:58px;">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>' +
+        '</button>' +
         '<button class="icon-btn" id="refreshBtn" title="Обновить курсы" style="position:absolute;right:16px;">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v6h-6"/></svg>' +
         '</button>' +
@@ -882,14 +884,24 @@
       '<div class="stats-row" id="statsRow"></div>' +
       '<section class="card" id="allocationCard"><h2 class="card-title">Распределение по фондам</h2><div id="allocationBars"></div></section>' +
       '<div class="funds-grid" id="fundsGrid"></div>' +
-      '<section class="card" id="ledgerCard"><h2 class="card-title">Взносы</h2><div id="ledgerList"></div></section>' +
       '<div class="footnote">Данные хранятся в твоей базе Supabase.<button class="sign-out-link" id="signOutBtn" style="margin:8px auto 0;">Выйти из аккаунта</button></div>' +
       '<button class="fab" id="addFab" title="Добавить взнос">+</button>';
 
     document.getElementById('refreshBtn').addEventListener('click', function(){ refreshAllPrices(); });
+    document.getElementById('ledgerBtn').addEventListener('click', openLedgerModal);
     document.getElementById('signOutBtn').addEventListener('click', handleSignOut);
     document.getElementById('modalOverlay').addEventListener('click', function(e){ if (e.target.id==='modalOverlay') closeModal(); });
     document.getElementById('addFab').addEventListener('click', openAddModal);
+  }
+
+  function openLedgerModal(){
+    var modal = document.getElementById('modalContent');
+    modal.innerHTML = '' +
+      '<div class="modal-head"><h2>Все взносы</h2><button class="modal-close" id="modalCloseBtn">×</button></div>' +
+      '<div id="ledgerList"></div>';
+    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+    document.getElementById('modalOverlay').classList.remove('hidden');
+    renderLedger();
   }
 
   function autofillCurrentNav(){
