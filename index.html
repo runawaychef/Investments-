@@ -88,6 +88,8 @@
   .stat-chip .val.good{color:var(--good);}
   .stat-chip .val.bad{color:var(--bad);}
   .stat-chip .sub{font-family:var(--mono);font-size:10.5px;margin-top:2px;color:var(--muted);}
+  .stat-chip .sub.good{color:var(--good);}
+  .stat-chip .sub.bad{color:var(--bad);}
 
   /* ALLOCATION */
   .alloc-flex{display:flex;align-items:center;gap:18px;}
@@ -259,7 +261,7 @@
       var txRes = await sb.from('transactions').select('*').order('date', { ascending:true });
       if (txRes.error) throw txRes.error;
       state.transactions = (txRes.data||[]).map(function(r){
-        return { id:r.id, date:r.date, fundKey:r.fund_key, amountEur:Number(r.amount_eur), nav:Number(r.nav), units:Number(r.units) };
+        return { id:r.id, date:r.date, fundKey:r.fund_key, amountEur:Number(r.amount_eur), nav:Number(r.nav), units:Number(r.units), kind:r.kind||'buy' };
       });
     } catch(e){ console.error(e); state.transactions = []; }
 
@@ -289,12 +291,12 @@
   }
 
   async function insertTransactionRemote(tx){
-    var res = await sb.from('transactions').insert([{ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units }]).select().single();
+    var res = await sb.from('transactions').insert([{ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units, kind:tx.kind||'buy' }]).select().single();
     if (res.error) throw res.error;
     return res.data;
   }
   async function updateTransactionRemote(id, tx){
-    var res = await sb.from('transactions').update({ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units }).eq('id', id);
+    var res = await sb.from('transactions').update({ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units, kind:tx.kind||'buy' }).eq('id', id);
     if (res.error) throw res.error;
   }
   async function deleteTransactionRemote(id){
@@ -356,28 +358,36 @@
   /* ---------- aggregates ---------- */
   function computeAggregates(){
     var byFund = {};
-    FUNDS.forEach(function(f){ byFund[f.key] = { invested:0, units:0 }; });
+    FUNDS.forEach(function(f){ byFund[f.key] = { invested:0, withdrawn:0, units:0 }; });
     state.transactions.forEach(function(t){
       if (!byFund[t.fundKey]) return;
-      byFund[t.fundKey].invested += t.amountEur;
-      byFund[t.fundKey].units += t.units;
+      if (t.kind==='sell'){
+        byFund[t.fundKey].withdrawn += t.amountEur;
+        byFund[t.fundKey].units -= t.units;
+      } else {
+        byFund[t.fundKey].invested += t.amountEur;
+        byFund[t.fundKey].units += t.units;
+      }
     });
-    var totalInvested = 0, totalCurrent = 0;
+    var totalInvested = 0, totalWithdrawn = 0, totalCurrent = 0;
     var perFund = {};
     FUNDS.forEach(function(f){
       var inv = byFund[f.key].invested;
-      var units = byFund[f.key].units;
+      var wd = byFund[f.key].withdrawn;
+      var units = Math.max(0, byFund[f.key].units);
       var nav = state.prices[f.key] ? state.prices[f.key].nav : null;
-      var cur = (nav!==null && nav!==undefined) ? units*nav : inv; // fall back to invested if no price yet
+      var cur = (nav!==null && nav!==undefined) ? units*nav : Math.max(0, inv-wd); // fall back if no price yet
       totalInvested += inv;
+      totalWithdrawn += wd;
       totalCurrent += cur;
-      perFund[f.key] = { invested:inv, units:units, current:cur, profit: cur-inv, profitPct: inv>0 ? (cur-inv)/inv*100 : 0 };
+      var profit = (cur+wd) - inv;
+      perFund[f.key] = { invested:inv, withdrawn:wd, units:units, current:cur, profit:profit, profitPct: inv>0 ? profit/inv*100 : 0 };
     });
-    var profit = totalCurrent - totalInvested;
+    var profit = (totalCurrent+totalWithdrawn) - totalInvested;
     var profitPct = totalInvested>0 ? profit/totalInvested*100 : 0;
     var firstDate = null;
     state.transactions.forEach(function(t){ if (!firstDate || t.date < firstDate) firstDate = t.date; });
-    return { totalInvested:totalInvested, totalCurrent:totalCurrent, profit:profit, profitPct:profitPct, perFund:perFund, firstDate:firstDate };
+    return { totalInvested:totalInvested, totalWithdrawn:totalWithdrawn, totalCurrent:totalCurrent, profit:profit, profitPct:profitPct, perFund:perFund, firstDate:firstDate };
   }
 
   function filterByPeriod(points, periodKey){
@@ -530,9 +540,13 @@
   /* ---------- render: stats row ---------- */
   function renderStats(agg){
     var pg = agg.profit>=0?'good':'bad';
+    var dc = dailyChangeFromPoints(state.portfolioHistory);
+    var dailyHtml = dc
+      ? '<div class="sub ' + (dc.diff>=0?'good':'bad') + '">' + (dc.diff>=0?'↑':'↓') + ' ' + fmtEUR(Math.abs(dc.diff)) + ' за день</div>'
+      : '<div class="sub">за день пока нет данных</div>';
     var html = '' +
       '<div class="stat-chip"><div class="lbl">Вложено всего</div><div class="val">' + fmtEUR(agg.totalInvested) + '</div></div>' +
-      '<div class="stat-chip"><div class="lbl">Прибыль</div><div class="val ' + pg + '">' + fmtEUR(agg.profit) + '</div><div class="sub">' + fmtPct(agg.profitPct) + '</div></div>';
+      '<div class="stat-chip"><div class="lbl">Прибыль</div><div class="val ' + pg + '">' + fmtEUR(agg.profit) + '</div><div class="sub">' + fmtPct(agg.profitPct) + ' всего</div>' + dailyHtml + '</div>';
     document.getElementById('statsRow').innerHTML = html;
   }
 
@@ -569,13 +583,15 @@
   }
 
   /* ---------- render: fund grid ---------- */
-  function dailyChangeForFund(fundKey){
-    var hist = state.history[fundKey];
-    if (!hist || hist.length<2) return null;
-    var last = hist[hist.length-1], prev = hist[hist.length-2];
+  function dailyChangeFromPoints(points){
+    if (!points || points.length<2) return null;
+    var last = points[points.length-1], prev = points[points.length-2];
     var diff = last.value - prev.value;
     var pct = prev.value!==0 ? diff/prev.value*100 : 0;
     return { diff: diff, pct: pct };
+  }
+  function dailyChangeForFund(fundKey){
+    return dailyChangeFromPoints(state.history[fundKey]);
   }
 
   function renderFundsGrid(agg){
@@ -620,9 +636,12 @@
     var sorted = state.transactions.slice().sort(function(a,b){ return a.date < b.date ? 1 : -1; });
     list.innerHTML = sorted.map(function(t){
       var f = fundByKey(t.fundKey);
+      var isSell = t.kind==='sell';
+      var kindTag = isSell ? '<span class="fund-tag" style="background:var(--bad);">Продажа</span>' : '';
       return '<div class="ledger-row">' +
         '<div class="ledger-row-top">' +
           '<span class="fund-tag" style="background:' + f.color + '">' + f.short + '</span>' +
+          kindTag +
           '<span class="ledger-date">' + fmtDateShort(t.date) + '</span>' +
           '<div class="ledger-actions">' +
             '<button class="row-icon-btn" data-edit="' + t.id + '" title="Редактировать">' + ICON_EDIT + '</button>' +
@@ -630,8 +649,8 @@
           '</div>' +
         '</div>' +
         '<div class="ledger-row-bottom">' +
-          '<div class="ledger-field"><div class="lbl">Взнос</div><div class="val">' + fmtEUR(t.amountEur) + '</div></div>' +
-          '<div class="ledger-field"><div class="lbl">Курс на день взноса</div><div class="val">' + fmtEUR(t.nav) + '</div></div>' +
+          '<div class="ledger-field"><div class="lbl">' + (isSell?'Получено':'Взнос') + '</div><div class="val">' + (isSell?'−':'') + fmtEUR(t.amountEur) + '</div></div>' +
+          '<div class="ledger-field"><div class="lbl">Курс на день ' + (isSell?'продажи':'взноса') + '</div><div class="val">' + fmtEUR(t.nav) + '</div></div>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -652,12 +671,16 @@
     var modal = document.getElementById('modalContent');
     modal.innerHTML = '' +
       '<div class="modal-head"><h2>Править взнос</h2><button class="modal-close" id="modalCloseBtn">×</button></div>' +
+      '<div class="field"><label>Тип</label><select id="editKind">' +
+        '<option value="buy"' + (tx.kind!=='sell'?' selected':'') + '>Покупка</option>' +
+        '<option value="sell"' + (tx.kind==='sell'?' selected':'') + '>Продажа</option>' +
+      '</select></div>' +
       '<div class="field"><label>Дата</label><input type="date" id="editDate" value="' + tx.date + '" /></div>' +
       '<div class="field"><label>Фонд</label><select id="editFund">' +
         FUNDS.map(function(f){ return '<option value="' + f.key + '"' + (f.key===tx.fundKey?' selected':'') + '>' + f.name + '</option>'; }).join('') +
       '</select></div>' +
       '<div class="field"><label>Сумма, EUR</label><input type="number" step="0.01" id="editAmount" value="' + tx.amountEur + '" /></div>' +
-      '<div class="field"><label>Курс пая на день взноса, EUR</label><input type="number" step="0.0001" id="editNav" value="' + tx.nav + '" /></div>' +
+      '<div class="field"><label>Курс пая, EUR</label><input type="number" step="0.0001" id="editNav" value="' + tx.nav + '" /></div>' +
       '<div class="btn-row">' +
         '<button class="btn btn-ghost" id="cancelEditBtn">Отмена</button>' +
         '<button class="btn btn-primary" id="saveEditBtn">Сохранить</button>' +
@@ -673,14 +696,15 @@
     var fundKey = document.getElementById('editFund').value;
     var amount = parseFloat(document.getElementById('editAmount').value);
     var nav = parseFloat(document.getElementById('editNav').value);
+    var kind = document.getElementById('editKind').value;
     if (!date || !amount || amount<=0 || !nav || nav<=0){ showToast('Проверь дату, сумму и курс'); return; }
     var tx = state.transactions.filter(function(t){ return t.id===txId; })[0];
     if (!tx) return;
     var oldFundKey = tx.fundKey, oldDate = tx.date;
     try {
       var units = amount/nav;
-      await updateTransactionRemote(txId, { date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units });
-      tx.date = date; tx.fundKey = fundKey; tx.amountEur = amount; tx.nav = nav; tx.units = units;
+      await updateTransactionRemote(txId, { date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units, kind:kind });
+      tx.date = date; tx.fundKey = fundKey; tx.amountEur = amount; tx.nav = nav; tx.units = units; tx.kind = kind;
       if (!state.history[fundKey]) state.history[fundKey] = [];
       upsertPoint(state.history[fundKey], date, nav);
       await upsertFundHistoryPoint(fundKey, date, nav);
@@ -717,8 +741,8 @@
     }
     var units = amount / nav;
     try {
-      var inserted = await insertTransactionRemote({ date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units });
-      var tx = { id: inserted.id, date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units };
+      var inserted = await insertTransactionRemote({ date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units, kind:'buy' });
+      var tx = { id: inserted.id, date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units, kind:'buy' };
       state.transactions.push(tx);
       if (!state.history[fundKey]) state.history[fundKey] = [];
       upsertPoint(state.history[fundKey], date, nav);
@@ -766,6 +790,8 @@
     var modal = document.getElementById('modalContent');
     function draw(){
       var filtered = filterByPeriod(navPoints, state.modalPeriod || '1M');
+      var withdrawnLine = pf.withdrawn>0 ? '<div class="modal-isin">выведено всего: ' + fmtEUR(pf.withdrawn) + '</div>' : '';
+      var currentNav = state.prices[fundKey] ? state.prices[fundKey].nav : '';
       modal.innerHTML = '' +
         '<div class="modal-head"><h2>' + f.name + '</h2><button class="modal-close" id="modalCloseBtn">×</button></div>' +
         '<div class="modal-isin">ISIN ' + f.isin + '</div>' +
@@ -775,12 +801,21 @@
           '<div class="stat-chip"><div class="lbl">Сейчас</div><div class="val">' + fmtEUR(pf.current) + '</div></div>' +
         '</div>' +
         '<div class="stat-chip" style="margin-bottom:14px;"><div class="lbl">Прибыль</div><div class="val ' + pg + '">' + fmtEUR(pf.profit) + ' (' + fmtPct(pf.profitPct) + ')</div></div>' +
+        withdrawnLine +
         '<div class="field"><label>Обновить курс пая вручную (EUR)</label>' +
           '<div class="btn-row"><input type="number" step="0.0001" id="manualNav" placeholder="например 19.40" />' +
           '<button class="btn btn-primary" id="manualNavBtn" style="flex:0 0 auto;width:auto;">Сохранить</button></div>' +
-        '</div>';
+        '</div>' +
+        '<h2 class="card-title" style="margin-top:18px;">Продать часть фонда</h2>' +
+        '<div class="card-sub">сейчас в наличии: ' + pf.units.toFixed(4) + ' паёв</div>' +
+        '<div class="field"><label>Дата</label><input type="date" id="sellDate" /></div>' +
+        '<div class="field"><label>Сумма продажи, EUR</label><input type="number" step="0.01" id="sellAmount" placeholder="например 20" /></div>' +
+        '<div class="field"><label>Курс пая на день продажи, EUR</label><input type="number" step="0.0001" id="sellNav" value="' + currentNav + '" /></div>' +
+        '<button class="btn btn-primary" id="sellBtn" style="background:var(--bad);">Продать</button>';
       document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
       document.getElementById('manualNavBtn').addEventListener('click', function(){ saveManualNav(fundKey); });
+      document.getElementById('sellDate').value = todayStr();
+      document.getElementById('sellBtn').addEventListener('click', function(){ saveSell(fundKey, pf.units); });
       Array.prototype.forEach.call(modal.querySelectorAll('[data-period]'), function(btn){
         btn.addEventListener('click', function(){ state.modalPeriod = btn.getAttribute('data-period'); draw(); });
       });
@@ -790,6 +825,31 @@
     document.getElementById('modalOverlay').classList.remove('hidden');
   }
   function closeModal(){ document.getElementById('modalOverlay').classList.add('hidden'); }
+
+  async function saveSell(fundKey, heldUnits){
+    var date = document.getElementById('sellDate').value;
+    var amount = parseFloat(document.getElementById('sellAmount').value);
+    var nav = parseFloat(document.getElementById('sellNav').value);
+    if (!date || !amount || amount<=0 || !nav || nav<=0){ showToast('Заполни дату, сумму и курс — все больше нуля'); return; }
+    var units = amount / nav;
+    if (units > heldUnits + 0.0005){
+      showToast('Нельзя продать больше, чем есть: ' + heldUnits.toFixed(4) + ' паёв (это примерно ' + fmtEUR(heldUnits*nav) + ')');
+      return;
+    }
+    if (!window.confirm('Продать на ' + fmtEUR(amount) + '? Это нельзя отменить.')) return;
+    try {
+      var inserted = await insertTransactionRemote({ date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units, kind:'sell' });
+      var tx = { id: inserted.id, date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units, kind:'sell' };
+      state.transactions.push(tx);
+      if (!state.history[fundKey]) state.history[fundKey] = [];
+      upsertPoint(state.history[fundKey], date, nav);
+      await upsertFundHistoryPoint(fundKey, date, nav);
+      await syncPortfolioSnapshot();
+      closeModal();
+      showToast('Продажа сохранена');
+      renderAll();
+    } catch(e){ showToast('Не удалось сохранить: ' + e.message); }
+  }
 
   async function saveManualNav(fundKey){
     var v = parseFloat(document.getElementById('manualNav').value);
