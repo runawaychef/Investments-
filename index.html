@@ -417,6 +417,7 @@
     if (failures.length>0) showToast('Не обновилось: ' + failures.join(' · '));
     else showToast('Курсы обновлены');
     renderAll();
+    autofillCurrentNav();
   }
 
   function setRefreshSpinning(on){
@@ -787,6 +788,14 @@
     document.getElementById('refreshBtn').addEventListener('click', function(){ refreshAllPrices(); });
     document.getElementById('signOutBtn').addEventListener('click', handleSignOut);
     document.getElementById('modalOverlay').addEventListener('click', function(e){ if (e.target.id==='modalOverlay') closeModal(); });
+    document.getElementById('txFund').addEventListener('change', autofillCurrentNav);
+    autofillCurrentNav();
+  }
+
+  function autofillCurrentNav(){
+    var fundKey = document.getElementById('txFund').value;
+    var p = state.prices[fundKey];
+    if (p) document.getElementById('txNav').value = p.nav;
   }
 
   function attachPeriodHandlers(){
