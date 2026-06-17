@@ -305,6 +305,10 @@
     var res = await sb.from('fund_price_history').upsert([{ fund_key:fundKey, date:date, nav:nav }], { onConflict:'user_id,fund_key,date' });
     if (res.error) throw res.error;
   }
+  async function deleteFundHistoryPoint(fundKey, date){
+    var res = await sb.from('fund_price_history').delete().eq('fund_key', fundKey).eq('date', date);
+    if (res.error) throw res.error;
+  }
   async function upsertPortfolioHistoryPoint(date, total){
     var res = await sb.from('portfolio_value_history').upsert([{ date:date, total_value:total }], { onConflict:'user_id,date' });
     if (res.error) throw res.error;
@@ -650,6 +654,7 @@
     if (!date || !amount || amount<=0 || !nav || nav<=0){ showToast('Проверь дату, сумму и курс'); return; }
     var tx = state.transactions.filter(function(t){ return t.id===txId; })[0];
     if (!tx) return;
+    var oldFundKey = tx.fundKey, oldDate = tx.date;
     try {
       var units = amount/nav;
       await updateTransactionRemote(txId, { date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units });
@@ -657,6 +662,19 @@
       if (!state.history[fundKey]) state.history[fundKey] = [];
       upsertPoint(state.history[fundKey], date, nav);
       await upsertFundHistoryPoint(fundKey, date, nav);
+
+      if (oldFundKey!==fundKey || oldDate!==date){
+        var stillUsed = state.transactions.some(function(t){ return t.fundKey===oldFundKey && t.date===oldDate; });
+        if (!stillUsed){
+          try {
+            await deleteFundHistoryPoint(oldFundKey, oldDate);
+            if (state.history[oldFundKey]){
+              state.history[oldFundKey] = state.history[oldFundKey].filter(function(p){ return p.date!==oldDate; });
+            }
+          } catch(e){ console.error(e); }
+        }
+      }
+
       await syncPortfolioSnapshot();
       closeModal();
       showToast('Изменения сохранены');
@@ -693,9 +711,23 @@
   }
 
   async function deleteTransaction(id){
+    var tx = state.transactions.filter(function(t){ return t.id===id; })[0];
     try {
       await deleteTransactionRemote(id);
       state.transactions = state.transactions.filter(function(t){ return t.id!==id; });
+
+      if (tx){
+        var stillUsed = state.transactions.some(function(t){ return t.fundKey===tx.fundKey && t.date===tx.date; });
+        if (!stillUsed){
+          try {
+            await deleteFundHistoryPoint(tx.fundKey, tx.date);
+            if (state.history[tx.fundKey]){
+              state.history[tx.fundKey] = state.history[tx.fundKey].filter(function(p){ return p.date!==tx.date; });
+            }
+          } catch(e){ console.error(e); /* not fatal — the transaction itself is already gone */ }
+        }
+      }
+
       await syncPortfolioSnapshot();
       renderAll();
     } catch(e){ showToast('Не удалось удалить: ' + e.message); }
