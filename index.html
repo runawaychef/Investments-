@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Investments</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#041F13">
+<link rel="icon" href="./favicon-32.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F6F3EC;
+    --paper:#FFFFFF;
+    --ink:#241A12;
+    --muted:#8C8275;
+    --line:#E7E1D3;
+    --accent:#FF5A1F;
+    --accent-soft:rgba(255,90,31,.10);
+    --good:#2F7A52;
+    --good-soft:rgba(47,122,82,.10);
+    --bad:#C0463A;
+    --bad-soft:rgba(192,70,58,.10);
+    --asia:#2F7A52;
+    --global:#FF5A1F;
+    --usa:#3B6FA0;
+    --tech:#C99A2E;
+    --radius:18px;
+    --serif:'Fraunces',serif;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;}
+  .hidden{display:none !important;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .page{max-width:480px;margin:0 auto;padding:20px 16px 64px;}
+
+  .topbar{display:flex;justify-content:center;align-items:center;margin-bottom:18px;}
+  .page-title{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);}
+  .updated-at{font-family:var(--mono);font-size:10px;color:var(--muted);}
+  .icon-btn{background:var(--paper);border:1px solid var(--line);border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer;}
+  .icon-btn svg{width:16px;height:16px;}
+  .icon-btn.spinning svg{animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px 16px;margin-bottom:14px;}
+  .card-title{font-size:13px;font-weight:600;margin:0 0 12px;color:var(--ink);}
+  .card-sub{font-size:12px;color:var(--muted);margin:-8px 0 12px;}
+
+  /* HERO */
+  .hero{position:relative;overflow:hidden;}
+  .hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .hero-value{font-family:var(--serif);font-weight:600;font-size:36px;line-height:1;}
+  .hero-value .cur{font-size:16px;font-weight:500;color:var(--muted);margin-left:5px;}
+  .hero-date{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;}
+  .hero-period{text-align:right;flex-shrink:0;}
+  .delta{font-family:var(--mono);font-size:15px;font-weight:600;white-space:nowrap;}
+  .delta.good{color:var(--good);}
+  .delta.bad{color:var(--bad);}
+  .delta-lbl{font-size:10.5px;color:var(--muted);margin-top:2px;max-width:120px;}
+
+  .stamp{position:absolute;top:14px;right:14px;width:60px;height:60px;border:1.4px dashed var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-10deg);font-family:var(--mono);font-size:8.5px;line-height:1.2;text-align:center;color:var(--accent);padding:6px;}
+
+  .chart-area{margin-top:18px;}
+  .chart-minmax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:4px;}
+  .chart-svg-wrap{width:100%;}
+  .chart-empty{font-size:12.5px;color:var(--muted);padding:28px 0;text-align:center;}
+
+  .period-tabs{display:flex;gap:6px;margin-top:10px;overflow-x:auto;}
+  .period-tab{font-family:var(--mono);font-size:11.5px;padding:6px 11px;border-radius:999px;border:1px solid transparent;color:var(--muted);cursor:pointer;background:none;flex-shrink:0;}
+  .period-tab.active{background:#FCDFA0;color:#3A2A12;font-weight:600;}
+
+  /* STATS ROW */
+  .stats-row{display:flex;gap:10px;margin-bottom:14px;}
+  .stat-chip{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px 12px;}
+  .stat-chip .lbl{font-size:10.5px;color:var(--muted);margin-bottom:4px;}
+  .stat-chip .val{font-family:var(--serif);font-size:18px;font-weight:600;}
+  .stat-chip .val.good{color:var(--good);}
+  .stat-chip .val.bad{color:var(--bad);}
+  .stat-chip .sub{font-family:var(--mono);font-size:10.5px;margin-top:2px;color:var(--muted);}
+
+  /* ALLOCATION */
+  .alloc-flex{display:flex;align-items:center;gap:18px;}
+  .alloc-list{flex:1;min-width:0;}
+  .alloc-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px;}
+  .alloc-row:last-child{margin-bottom:0;}
+  .alloc-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .alloc-name{flex:1;color:var(--ink);}
+  .alloc-pct{font-family:var(--mono);font-size:12.5px;color:var(--muted);width:38px;text-align:right;}
+  .donut{width:88px;height:88px;border-radius:50%;flex-shrink:0;position:relative;}
+  .donut::after{content:'';position:absolute;top:15px;left:15px;width:58px;height:58px;background:var(--paper);border-radius:50%;}
+
+  /* FUND GRID */
+  .funds-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .fund-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:13px 12px;cursor:pointer;transition:transform .12s ease;}
+  .fund-card:active{transform:scale(.97);}
+  .fund-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+  .fund-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .fund-name{font-size:12.5px;font-weight:600;line-height:1.2;}
+  .fund-val{font-family:var(--serif);font-size:19px;font-weight:600;}
+  .fund-profit{font-family:var(--mono);font-size:11px;margin-top:3px;}
+  .fund-profit.good{color:var(--good);}
+  .fund-profit.bad{color:var(--bad);}
+  .fund-invested{font-size:10.5px;color:var(--muted);margin-top:6px;}
+
+  /* ADD FORM */
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;}
+  .field input, .field select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;font-size:14.5px;font-family:var(--sans);background:#FCFBF8;color:var(--ink);}
+  .field input:focus, .field select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  .btn{width:100%;padding:12px;border-radius:10px;border:none;font-size:14.5px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:active{transform:scale(.98);}
+  .btn-ghost{background:none;border:1px solid var(--line);color:var(--ink);}
+  .btn-row{display:flex;gap:8px;}
+  .btn-row .btn{flex:1;}
+
+  .dot-spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;display:inline-block;}
+
+  /* LEDGER */
+  .ledger-row{padding:11px 0;border-bottom:1px solid var(--line);}
+  .ledger-row:last-child{border-bottom:none;}
+  .ledger-row-top{display:flex;align-items:center;gap:8px;}
+  .fund-tag{font-size:10px;font-family:var(--mono);padding:3px 7px;border-radius:6px;color:#fff;flex-shrink:0;}
+  .ledger-date{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
+  .ledger-actions{display:flex;gap:6px;margin-left:auto;}
+  .row-icon-btn{background:var(--bg);border:none;width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;flex-shrink:0;}
+  .row-icon-btn svg{width:13px;height:13px;}
+  .row-icon-btn.danger:active{color:var(--bad);}
+  .ledger-row-bottom{display:flex;gap:22px;margin-top:7px;}
+  .ledger-field .lbl{font-size:9.5px;color:var(--muted);margin-bottom:1px;}
+  .ledger-field .val{font-family:var(--mono);font-size:13px;color:var(--ink);}
+  .empty-state{text-align:center;padding:26px 10px;color:var(--muted);font-size:13px;}
+
+  /* MODAL */
+  .modal-overlay{position:fixed;inset:0;background:rgba(36,26,18,.45);display:flex;align-items:flex-end;justify-content:center;z-index:50;}
+  .modal-overlay.hidden{display:none;}
+  .modal{background:var(--paper);border-radius:22px 22px 0 0;max-width:480px;width:100%;padding:20px 18px 28px;max-height:86vh;overflow-y:auto;}
+  .modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .modal-head h2{font-family:var(--serif);font-size:20px;margin:0;font-weight:600;}
+  .modal-close{background:var(--bg);border:none;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;color:var(--ink);}
+  .modal-isin{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:14px;}
+  .modal-stats{display:flex;gap:10px;margin:14px 0;}
+
+  .footnote{font-size:11px;color:var(--muted);text-align:center;line-height:1.5;margin-top:6px;}
+  #ledgerList{max-height:362px;overflow-y:auto;}
+  #ledgerList::-webkit-scrollbar{width:4px;}
+  #ledgerList::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--ink);color:#fff;font-size:12.5px;padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .2s ease, transform .2s ease;z-index:80;max-width:90%;text-align:center;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .loading-screen{display:flex;align-items:center;justify-content:center;min-height:60vh;color:var(--muted);font-size:13px;}
+
+  /* AUTH / PIN GATES */
+  .auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .auth-screen.hidden{display:none;}
+  .auth-card{width:100%;max-width:340px;}
+  .auth-brand{font-family:var(--serif);font-size:24px;font-weight:600;text-align:center;margin-bottom:22px;}
+  .auth-error{color:var(--bad);font-size:12.5px;margin:-2px 0 12px;text-align:center;}
+  .auth-hint{font-size:12.5px;color:var(--muted);text-align:center;margin-bottom:18px;line-height:1.5;}
+  .pin-input{width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;font-size:26px;letter-spacing:14px;text-align:center;font-family:var(--mono);background:#FCFBF8;color:var(--ink);}
+  .auth-link{display:block;text-align:center;font-size:12px;color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer;margin:14px auto 0;}
+  .sign-out-link{display:block;text-align:center;font-size:11px;color:var(--muted);text-decoration:underline;background:none;border:none;cursor:pointer;margin:14px auto 0;}
+</style>
+</head>
+<body>
+  <div class="auth-screen hidden" id="authScreen">
+    <div class="auth-card">
+      <div class="auth-brand">Investments</div>
+      <form id="loginForm">
+        <div class="field"><label>Email</label><input type="email" id="loginEmail" autocomplete="username" /></div>
+        <div class="field"><label>Пароль</label><input type="password" id="loginPassword" autocomplete="current-password" /></div>
+        <div class="auth-error hidden" id="loginError"></div>
+        <button type="submit" class="btn btn-primary" id="loginSubmitBtn">Войти</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="auth-screen hidden" id="pinScreen">
+    <div class="auth-card">
+      <div class="auth-brand">Investments</div>
+      <div class="auth-hint" id="pinHint">Придумай 4-значный PIN для этого устройства — он будет нужен при каждом открытии приложения.</div>
+      <form id="pinForm">
+        <div class="field"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="pin-input" id="pinInput1" placeholder="••••" /></div>
+        <div class="field hidden" id="pinConfirmField"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="pin-input" id="pinInput2" placeholder="••••" /></div>
+        <div class="auth-error hidden" id="pinError"></div>
+        <button type="submit" class="btn btn-primary" id="pinSubmitBtn">Сохранить PIN</button>
+      </form>
+      <button class="sign-out-link" id="forgotPinBtn">Забыл PIN? Выйти из аккаунта</button>
+    </div>
+  </div>
+
+  <div class="page hidden" id="page">
+    <div class="loading-screen" id="loadingScreen">Загрузка…</div>
+  </div>
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal" id="modalContent"></div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- supabase ---------- */
+  var SUPABASE_URL = 'https://zwisqczlfaziasbulchr.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXNxY3psZmF6aWFzYnVsY2hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzUzMTMsImV4cCI6MjA5NzIxMTMxM30.sfqQbvaIyYcR8cl7bMrEUnPuLzFoQyuyxfDOsCUVXr4';
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  /* ---------- constants ---------- */
+  var FUNDS = [
+    { key:'global', name:'Access Edge Global', short:'Global', isin:'SE0015192349', color:'var(--global)', hex:'#FF5A1F' },
+    { key:'asia',   name:'Access Asien (Asia)', short:'Asia',   isin:'SE0013876968', color:'var(--asia)',   hex:'#2F7A52' },
+    { key:'usa',    name:'Access Edge USA',     short:'USA',    isin:'SE0015192323', color:'var(--usa)',    hex:'#3B6FA0' },
+    { key:'tech',   name:'Technology',          short:'Tech',   isin:'SE0014261764', color:'var(--tech)',   hex:'#C99A2E' }
+  ];
+  var PERIODS = [
+    { key:'1W', label:'1W' },
+    { key:'1M', label:'1M' },
+    { key:'6M', label:'6M' },
+    { key:'YTD', label:'YTD' },
+    { key:'1Y', label:'1Y' },
+    { key:'ALL', label:'All' }
+  ];
+
+  function fundByKey(k){ for (var i=0;i<FUNDS.length;i++) if (FUNDS[i].key===k) return FUNDS[i]; return null; }
+
+  /* ---------- state ---------- */
+  var state = {
+    transactions: [],      // {id, date, fundKey, amountEur, nav, units}
+    prices: {},             // fundKey -> {nav, asOf, source}
+    history: {},            // fundKey -> [{date, nav}]
+    portfolioHistory: [],   // [{date, total}]
+    lastDailyRefresh: null,
+    activePeriod: '1M',
+    loaded: false
+  };
+  FUNDS.forEach(function(f){ state.history[f.key] = []; state.prices[f.key] = null; });
+
+  /* ---------- data layer (Supabase) ---------- */
+  async function loadAll(){
+    try {
+      var txRes = await sb.from('transactions').select('*').order('date', { ascending:true });
+      if (txRes.error) throw txRes.error;
+      state.transactions = (txRes.data||[]).map(function(r){
+        return { id:r.id, date:r.date, fundKey:r.fund_key, amountEur:Number(r.amount_eur), nav:Number(r.nav), units:Number(r.units) };
+      });
+    } catch(e){ console.error(e); state.transactions = []; }
+
+    try {
+      var priceRes = await sb.from('current_prices').select('*');
+      if (priceRes.error) throw priceRes.error;
+      (priceRes.data||[]).forEach(function(r){ state.prices[r.fund_key] = { nav:Number(r.nav), asOf:r.as_of_date, source:r.source }; });
+    } catch(e){ console.error(e); }
+
+    try {
+      var histRes = await sb.from('fund_price_history').select('*').order('date', { ascending:true });
+      if (histRes.error) throw histRes.error;
+      (histRes.data||[]).forEach(function(r){
+        if (!state.history[r.fund_key]) state.history[r.fund_key] = [];
+        state.history[r.fund_key].push({ date:r.date, value:Number(r.nav) });
+      });
+    } catch(e){ console.error(e); }
+
+    try {
+      var pvRes = await sb.from('portfolio_value_history').select('*').order('date', { ascending:true });
+      if (pvRes.error) throw pvRes.error;
+      state.portfolioHistory = (pvRes.data||[]).map(function(r){ return { date:r.date, value:Number(r.total_value) }; });
+      if (state.portfolioHistory.length) state.lastDailyRefresh = state.portfolioHistory[state.portfolioHistory.length-1].date;
+    } catch(e){ console.error(e); }
+
+    state.loaded = true;
+  }
+
+  async function insertTransactionRemote(tx){
+    var res = await sb.from('transactions').insert([{ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units }]).select().single();
+    if (res.error) throw res.error;
+    return res.data;
+  }
+  async function updateTransactionRemote(id, tx){
+    var res = await sb.from('transactions').update({ date:tx.date, fund_key:tx.fundKey, amount_eur:tx.amountEur, nav:tx.nav, units:tx.units }).eq('id', id);
+    if (res.error) throw res.error;
+  }
+  async function deleteTransactionRemote(id){
+    var res = await sb.from('transactions').delete().eq('id', id);
+    if (res.error) throw res.error;
+  }
+  async function upsertCurrentPrice(fundKey, nav, asOf, source){
+    var res = await sb.from('current_prices').upsert([{ fund_key:fundKey, nav:nav, as_of_date:asOf, source:source }], { onConflict:'user_id,fund_key' });
+    if (res.error) throw res.error;
+  }
+  async function upsertFundHistoryPoint(fundKey, date, nav){
+    var res = await sb.from('fund_price_history').upsert([{ fund_key:fundKey, date:date, nav:nav }], { onConflict:'user_id,fund_key,date' });
+    if (res.error) throw res.error;
+  }
+  async function upsertPortfolioHistoryPoint(date, total){
+    var res = await sb.from('portfolio_value_history').upsert([{ date:date, total_value:total }], { onConflict:'user_id,date' });
+    if (res.error) throw res.error;
+  }
+  async function syncPortfolioSnapshot(){
+    var agg = computeAggregates();
+    var today = todayStr();
+    upsertPoint(state.portfolioHistory, today, agg.totalCurrent);
+    state.lastDailyRefresh = today;
+    try { await upsertPortfolioHistoryPoint(today, agg.totalCurrent); } catch(e){ console.error(e); }
+  }
+
+  /* ---------- date helpers ---------- */
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function fmtDate(d){
+    var dt = new Date(d+'T00:00:00');
+    return dt.toLocaleDateString('ru-RU', { day:'2-digit', month:'short', year:'numeric' });
+  }
+  function fmtDateShort(d){
+    var dt = new Date(d+'T00:00:00');
+    return dt.toLocaleDateString('ru-RU', { day:'2-digit', month:'short' });
+  }
+  function fmtEUR(n){
+    if (n===null || n===undefined || isNaN(n)) return '—';
+    return new Intl.NumberFormat('ru-RU', { minimumFractionDigits:2, maximumFractionDigits:2 }).format(n) + ' €';
+  }
+  function fmtPct(n){
+    if (n===null || n===undefined || isNaN(n)) return '—';
+    var s = n>=0 ? '+' : '';
+    return s + n.toFixed(2) + '%';
+  }
+  function upsertPoint(arr, date, value){
+    for (var i=0;i<arr.length;i++){
+      if (arr[i].date === date){ arr[i].value = value; sortPoints(arr); return; }
+    }
+    arr.push({ date: date, value: value });
+    sortPoints(arr);
+  }
+  function sortPoints(arr){ arr.sort(function(a,b){ return a.date < b.date ? -1 : 1; }); }
+
+  /* ---------- aggregates ---------- */
+  function computeAggregates(){
+    var byFund = {};
+    FUNDS.forEach(function(f){ byFund[f.key] = { invested:0, units:0 }; });
+    state.transactions.forEach(function(t){
+      if (!byFund[t.fundKey]) return;
+      byFund[t.fundKey].invested += t.amountEur;
+      byFund[t.fundKey].units += t.units;
+    });
+    var totalInvested = 0, totalCurrent = 0;
+    var perFund = {};
+    FUNDS.forEach(function(f){
+      var inv = byFund[f.key].invested;
+      var units = byFund[f.key].units;
+      var nav = state.prices[f.key] ? state.prices[f.key].nav : null;
+      var cur = (nav!==null && nav!==undefined) ? units*nav : inv; // fall back to invested if no price yet
+      totalInvested += inv;
+      totalCurrent += cur;
+      perFund[f.key] = { invested:inv, units:units, current:cur, profit: cur-inv, profitPct: inv>0 ? (cur-inv)/inv*100 : 0 };
+    });
+    var profit = totalCurrent - totalInvested;
+    var profitPct = totalInvested>0 ? profit/totalInvested*100 : 0;
+    var firstDate = null;
+    state.transactions.forEach(function(t){ if (!firstDate || t.date < firstDate) firstDate = t.date; });
+    return { totalInvested:totalInvested, totalCurrent:totalCurrent, profit:profit, profitPct:profitPct, perFund:perFund, firstDate:firstDate };
+  }
+
+  function filterByPeriod(points, periodKey){
+    if (!points || points.length===0) return [];
+    if (periodKey==='ALL') return points;
+    var now = new Date();
+    var cutoff;
+    if (periodKey==='1W'){ cutoff = new Date(now); cutoff.setDate(cutoff.getDate()-7); }
+    else if (periodKey==='1M'){ cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth()-1); }
+    else if (periodKey==='6M'){ cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth()-6); }
+    else if (periodKey==='YTD'){ cutoff = new Date(now.getFullYear(),0,1); }
+    else if (periodKey==='1Y'){ cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear()-1); }
+    else { cutoff = new Date(0); }
+    var cutoffStr = cutoff.toISOString().slice(0,10);
+    var filtered = points.filter(function(p){ return p.date >= cutoffStr; });
+    return filtered.length>=2 ? filtered : points;
+  }
+
+  /* ---------- toast ---------- */
+  var toastTimer = null;
+  function showToast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 3200);
+  }
+
+  /* ---------- SVG chart ---------- */
+  function buildChart(points, hexColor, height){
+    height = height || 150;
+    if (!points || points.length < 2){
+      return '<div class="chart-empty">График появится после нескольких обновлений курса — заходи сюда время от времени.</div>';
+    }
+    var W = 600, H = height;
+    var values = points.map(function(p){ return p.value; });
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (min===max){ min = min - 1; max = max + 1; }
+    var pad = (max-min)*0.12;
+    min -= pad; max += pad;
+    var n = points.length;
+    var coords = points.map(function(p, i){
+      var x = n===1 ? W : (i/(n-1))*W;
+      var y = H - ((p.value-min)/(max-min))*H;
+      return [x,y];
+    });
+    var linePath = 'M' + coords.map(function(c){ return c[0].toFixed(1)+','+c[1].toFixed(1); }).join(' L');
+    var areaPath = linePath + ' L' + W + ',' + H + ' L0,' + H + ' Z';
+    var last = coords[coords.length-1];
+    var gid = 'g' + Math.random().toString(36).slice(2,8);
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="width:100%;height:' + H + 'px;display:block;">' +
+      '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + hexColor + '" stop-opacity="0.32"/>' +
+        '<stop offset="100%" stop-color="' + hexColor + '" stop-opacity="0"/>' +
+      '</linearGradient></defs>' +
+      '<line x1="0" y1="2" x2="' + W + '" y2="2" stroke="#E7E1D3" stroke-width="1"/>' +
+      '<line x1="0" y1="' + (H-2) + '" x2="' + W + '" y2="' + (H-2) + '" stroke="#E7E1D3" stroke-width="1"/>' +
+      '<path d="' + areaPath + '" fill="url(#' + gid + ')" stroke="none"/>' +
+      '<path d="' + linePath + '" fill="none" stroke="' + hexColor + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4.5" fill="' + hexColor + '"/>' +
+      '</svg>';
+    var minmax = '<div class="chart-minmax"><span>' + max.toFixed(2) + ' €</span><span>' + min.toFixed(2) + ' €</span></div>';
+    return '<div class="chart-svg-wrap">' + minmax + svg + '</div>';
+  }
+
+  function periodTabsHtml(activeKey, targetAttr){
+    return '<div class="period-tabs" data-target="' + targetAttr + '">' + PERIODS.map(function(p){
+      return '<button class="period-tab' + (p.key===activeKey?' active':'') + '" data-period="' + p.key + '">' + p.label + '</button>';
+    }).join('') + '</div>';
+  }
+
+  /* ---------- render: hero ---------- */
+  function renderHero(agg){
+    var filtered = filterByPeriod(state.portfolioHistory, state.activePeriod);
+    var deltaVal = null, deltaPct = null;
+    if (filtered.length>=2){
+      var first = filtered[0].value, lastV = filtered[filtered.length-1].value;
+      deltaVal = lastV-first;
+      deltaPct = first!==0 ? deltaVal/first*100 : 0;
+    }
+    var goodBad = deltaVal===null ? '' : (deltaVal>=0?'good':'bad');
+    var arrow = deltaVal===null ? '' : (deltaVal>=0?'↑':'↓');
+    var lastUpdated = state.lastDailyRefresh ? fmtDate(state.lastDailyRefresh) : 'пока нет данных';
+    var stampHtml = agg.firstDate
+      ? '<div class="stamp">с<br>' + fmtDateShort(agg.firstDate) + '<br>' + agg.firstDate.slice(0,4) + '</div>'
+      : '';
+    var html = '' +
+      stampHtml +
+      '<div class="hero-top">' +
+        '<div>' +
+          '<div class="hero-value">' + agg.totalCurrent.toFixed(2) + '<span class="cur">EUR</span></div>' +
+          '<div class="hero-date">обновлено: ' + lastUpdated + '</div>' +
+        '</div>' +
+        '<div class="hero-period">' +
+          (deltaVal!==null
+            ? '<div class="delta ' + goodBad + '">' + arrow + ' ' + Math.abs(deltaVal).toFixed(2) + ' € (' + fmtPct(deltaPct) + ')</div><div class="delta-lbl">изменение за период, включая новые взносы</div>'
+            : '<div class="delta">—</div><div class="delta-lbl">пока недостаточно точек</div>') +
+        '</div>' +
+      '</div>' +
+      '<div class="chart-area">' + buildChart(filtered, '#FF5A1F', 150) +
+      periodTabsHtml(state.activePeriod, 'hero') +
+      '</div>';
+    document.getElementById('hero').innerHTML = html;
+  }
+
+  /* ---------- render: stats row ---------- */
+  function renderStats(agg){
+    var pg = agg.profit>=0?'good':'bad';
+    var html = '' +
+      '<div class="stat-chip"><div class="lbl">Вложено всего</div><div class="val">' + fmtEUR(agg.totalInvested) + '</div></div>' +
+      '<div class="stat-chip"><div class="lbl">Прибыль</div><div class="val ' + pg + '">' + fmtEUR(agg.profit) + '</div><div class="sub">' + fmtPct(agg.profitPct) + '</div></div>';
+    document.getElementById('statsRow').innerHTML = html;
+  }
+
+  /* ---------- render: allocation ---------- */
+  function buildDonutGradient(agg){
+    var total = agg.totalCurrent;
+    if (!total || total<=0) return 'conic-gradient(var(--line) 0% 100%)';
+    var stops = [];
+    var acc = 0;
+    FUNDS.forEach(function(f){
+      var v = agg.perFund[f.key].current;
+      var pct = v/total*100;
+      var start = acc;
+      var end = acc + pct;
+      stops.push(f.color + ' ' + start.toFixed(2) + '% ' + end.toFixed(2) + '%');
+      acc = end;
+    });
+    return 'conic-gradient(' + stops.join(',') + ')';
+  }
+
+  function renderAllocation(agg){
+    var total = agg.totalCurrent>0 ? agg.totalCurrent : 1;
+    var rows = FUNDS.map(function(f){
+      var v = agg.perFund[f.key].current;
+      var pct = total>0 ? (v/total*100) : 0;
+      return '<div class="alloc-row">' +
+        '<span class="alloc-dot" style="background:' + f.color + '"></span>' +
+        '<span class="alloc-name">' + f.name + '</span>' +
+        '<span class="alloc-pct">' + pct.toFixed(0) + '%</span>' +
+      '</div>';
+    }).join('');
+    var donut = '<div class="donut" style="background:' + buildDonutGradient(agg) + '"></div>';
+    document.getElementById('allocationBars').innerHTML = '<div class="alloc-flex"><div class="alloc-list">' + rows + '</div>' + donut + '</div>';
+  }
+
+  /* ---------- render: fund grid ---------- */
+  function renderFundsGrid(agg){
+    var html = FUNDS.map(function(f){
+      var pf = agg.perFund[f.key];
+      var pg = pf.profit>=0?'good':'bad';
+      var arrow = pf.profit>=0?'↑':'↓';
+      return '<div class="fund-card" data-fund="' + f.key + '">' +
+        '<div class="fund-card-top"><span class="fund-dot" style="background:' + f.color + '"></span><span class="fund-name">' + f.name + '</span></div>' +
+        '<div class="fund-val">' + fmtEUR(pf.current) + '</div>' +
+        '<div class="fund-profit ' + pg + '">' + arrow + ' ' + fmtEUR(Math.abs(pf.profit)) + ' (' + fmtPct(pf.profitPct) + ')</div>' +
+        '<div class="fund-invested">вложено ' + fmtEUR(pf.invested) + '</div>' +
+      '</div>';
+    }).join('');
+    document.getElementById('fundsGrid').innerHTML = html;
+    Array.prototype.forEach.call(document.querySelectorAll('.fund-card'), function(el){
+      el.addEventListener('click', function(){ openFundModal(el.getAttribute('data-fund')); });
+    });
+  }
+
+  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+
+  /* ---------- render: ledger ---------- */
+  function renderLedger(){
+    var list = document.getElementById('ledgerList');
+    if (state.transactions.length===0){
+      list.innerHTML = '<div class="empty-state">Взносов пока нет — добавь первый выше.</div>';
+      return;
+    }
+    var sorted = state.transactions.slice().sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+    list.innerHTML = sorted.map(function(t){
+      var f = fundByKey(t.fundKey);
+      return '<div class="ledger-row">' +
+        '<div class="ledger-row-top">' +
+          '<span class="fund-tag" style="background:' + f.color + '">' + f.short + '</span>' +
+          '<span class="ledger-date">' + fmtDateShort(t.date) + '</span>' +
+          '<div class="ledger-actions">' +
+            '<button class="row-icon-btn" data-edit="' + t.id + '" title="Редактировать">' + ICON_EDIT + '</button>' +
+            '<button class="row-icon-btn danger" data-del="' + t.id + '" title="Удалить">' + ICON_TRASH + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ledger-row-bottom">' +
+          '<div class="ledger-field"><div class="lbl">Взнос</div><div class="val">' + fmtEUR(t.amountEur) + '</div></div>' +
+          '<div class="ledger-field"><div class="lbl">Курс на день взноса</div><div class="val">' + fmtEUR(t.nav) + '</div></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    Array.prototype.forEach.call(list.querySelectorAll('[data-del]'), function(btn){
+      btn.addEventListener('click', function(){ deleteTransaction(btn.getAttribute('data-del')); });
+    });
+    Array.prototype.forEach.call(list.querySelectorAll('[data-edit]'), function(btn){
+      btn.addEventListener('click', function(){ openEditModal(btn.getAttribute('data-edit')); });
+    });
+  }
+
+  /* ---------- edit transaction ---------- */
+  function openEditModal(txId){
+    var tx = state.transactions.filter(function(t){ return t.id===txId; })[0];
+    if (!tx) return;
+    var modal = document.getElementById('modalContent');
+    modal.innerHTML = '' +
+      '<div class="modal-head"><h2>Править взнос</h2><button class="modal-close" id="modalCloseBtn">×</button></div>' +
+      '<div class="field"><label>Дата</label><input type="date" id="editDate" value="' + tx.date + '" /></div>' +
+      '<div class="field"><label>Фонд</label><select id="editFund">' +
+        FUNDS.map(function(f){ return '<option value="' + f.key + '"' + (f.key===tx.fundKey?' selected':'') + '>' + f.name + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="field"><label>Сумма, EUR</label><input type="number" step="0.01" id="editAmount" value="' + tx.amountEur + '" /></div>' +
+      '<div class="field"><label>Курс пая на день взноса, EUR</label><input type="number" step="0.0001" id="editNav" value="' + tx.nav + '" /></div>' +
+      '<div class="btn-row">' +
+        '<button class="btn btn-ghost" id="cancelEditBtn">Отмена</button>' +
+        '<button class="btn btn-primary" id="saveEditBtn">Сохранить</button>' +
+      '</div>';
+    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelEditBtn').addEventListener('click', closeModal);
+    document.getElementById('saveEditBtn').addEventListener('click', function(){ saveEditedTransaction(txId); });
+    document.getElementById('modalOverlay').classList.remove('hidden');
+  }
+
+  async function saveEditedTransaction(txId){
+    var date = document.getElementById('editDate').value;
+    var fundKey = document.getElementById('editFund').value;
+    var amount = parseFloat(document.getElementById('editAmount').value);
+    var nav = parseFloat(document.getElementById('editNav').value);
+    if (!date || !amount || amount<=0 || !nav || nav<=0){ showToast('Проверь дату, сумму и курс'); return; }
+    var tx = state.transactions.filter(function(t){ return t.id===txId; })[0];
+    if (!tx) return;
+    try {
+      var units = amount/nav;
+      await updateTransactionRemote(txId, { date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units });
+      tx.date = date; tx.fundKey = fundKey; tx.amountEur = amount; tx.nav = nav; tx.units = units;
+      if (!state.history[fundKey]) state.history[fundKey] = [];
+      upsertPoint(state.history[fundKey], date, nav);
+      await upsertFundHistoryPoint(fundKey, date, nav);
+      await syncPortfolioSnapshot();
+      closeModal();
+      showToast('Изменения сохранены');
+      renderAll();
+    } catch(e){ showToast('Не удалось сохранить: ' + e.message); }
+  }
+
+  /* ---------- add transaction flow ---------- */
+  async function handleAddSubmit(e){
+    e.preventDefault();
+    var date = document.getElementById('txDate').value;
+    var fundKey = document.getElementById('txFund').value;
+    var amount = parseFloat(document.getElementById('txAmount').value);
+    var nav = parseFloat(document.getElementById('txNav').value);
+    if (!date || !fundKey || !amount || amount<=0 || !nav || nav<=0){
+      showToast('Заполни дату, фонд, сумму и курс — все больше нуля');
+      return;
+    }
+    var units = amount / nav;
+    try {
+      var inserted = await insertTransactionRemote({ date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units });
+      var tx = { id: inserted.id, date:date, fundKey:fundKey, amountEur:amount, nav:nav, units:units };
+      state.transactions.push(tx);
+      if (!state.history[fundKey]) state.history[fundKey] = [];
+      upsertPoint(state.history[fundKey], date, nav);
+      await upsertFundHistoryPoint(fundKey, date, nav);
+      await syncPortfolioSnapshot();
+      document.getElementById('txAmount').value = '';
+      document.getElementById('txNav').value = '';
+      document.getElementById('txDate').value = todayStr();
+      showToast('Взнос сохранён');
+      renderAll();
+    } catch(e){ showToast('Не удалось сохранить: ' + e.message); }
+  }
+
+  async function deleteTransaction(id){
+    try {
+      await deleteTransactionRemote(id);
+      state.transactions = state.transactions.filter(function(t){ return t.id!==id; });
+      await syncPortfolioSnapshot();
+      renderAll();
+    } catch(e){ showToast('Не удалось удалить: ' + e.message); }
+  }
+
+  /* ---------- fund modal ---------- */
+  function openFundModal(fundKey){
+    var f = fundByKey(fundKey);
+    var agg = computeAggregates();
+    var pf = agg.perFund[fundKey];
+    var pg = pf.profit>=0?'good':'bad';
+    var hist = state.history[fundKey] || [];
+    var navPoints = hist.map(function(p){ return { date:p.date, value:p.value }; });
+    var modal = document.getElementById('modalContent');
+    function draw(){
+      var filtered = filterByPeriod(navPoints, state.modalPeriod || '1M');
+      modal.innerHTML = '' +
+        '<div class="modal-head"><h2>' + f.name + '</h2><button class="modal-close" id="modalCloseBtn">×</button></div>' +
+        '<div class="modal-isin">ISIN ' + f.isin + '</div>' +
+        '<div class="chart-area">' + buildChart(filtered, f.hex, 140) + periodTabsHtml(state.modalPeriod || '1M', 'modal') + '</div>' +
+        '<div class="modal-stats">' +
+          '<div class="stat-chip"><div class="lbl">Вложено</div><div class="val">' + fmtEUR(pf.invested) + '</div></div>' +
+          '<div class="stat-chip"><div class="lbl">Сейчас</div><div class="val">' + fmtEUR(pf.current) + '</div></div>' +
+        '</div>' +
+        '<div class="stat-chip" style="margin-bottom:14px;"><div class="lbl">Прибыль</div><div class="val ' + pg + '">' + fmtEUR(pf.profit) + ' (' + fmtPct(pf.profitPct) + ')</div></div>' +
+        '<div class="field"><label>Обновить курс пая вручную (EUR)</label>' +
+          '<div class="btn-row"><input type="number" step="0.0001" id="manualNav" placeholder="например 19.40" />' +
+          '<button class="btn btn-primary" id="manualNavBtn" style="flex:0 0 auto;width:auto;">Сохранить</button></div>' +
+        '</div>';
+      document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+      document.getElementById('manualNavBtn').addEventListener('click', function(){ saveManualNav(fundKey); });
+      Array.prototype.forEach.call(modal.querySelectorAll('[data-period]'), function(btn){
+        btn.addEventListener('click', function(){ state.modalPeriod = btn.getAttribute('data-period'); draw(); });
+      });
+    }
+    state.modalPeriod = '1M';
+    draw();
+    document.getElementById('modalOverlay').classList.remove('hidden');
+  }
+  function closeModal(){ document.getElementById('modalOverlay').classList.add('hidden'); }
+
+  async function saveManualNav(fundKey){
+    var v = parseFloat(document.getElementById('manualNav').value);
+    if (!v || v<=0){ showToast('Укажи число больше нуля'); return; }
+    var today = todayStr();
+    try {
+      await upsertCurrentPrice(fundKey, v, today, 'вручную');
+      await upsertFundHistoryPoint(fundKey, today, v);
+      state.prices[fundKey] = { nav:v, asOf:today, source:'вручную' };
+      if (!state.history[fundKey]) state.history[fundKey] = [];
+      upsertPoint(state.history[fundKey], today, v);
+      await syncPortfolioSnapshot();
+      showToast('Курс обновлён');
+      closeModal();
+      renderAll();
+    } catch(e){ showToast('Не удалось сохранить: ' + e.message); }
+  }
+
+  /* ---------- main shell + render ---------- */
+  function buildShell(){
+    document.getElementById('page').innerHTML = '' +
+      '<div class="topbar">' +
+        '<div class="page-title">Investments</div>' +
+      '</div>' +
+      '<section class="card hero" id="hero"></section>' +
+      '<div class="stats-row" id="statsRow"></div>' +
+      '<section class="card" id="allocationCard"><h2 class="card-title">Распределение по фондам</h2><div id="allocationBars"></div></section>' +
+      '<div class="funds-grid" id="fundsGrid"></div>' +
+      '<section class="card" id="addCard">' +
+        '<h2 class="card-title">Добавить взнос</h2>' +
+        '<div class="card-sub">Курс вводится вручную — автообновление с сайта фонда добавим следующим шагом.</div>' +
+        '<form id="addForm">' +
+          '<div class="field"><label>Дата</label><input type="date" id="txDate" /></div>' +
+          '<div class="field"><label>Фонд</label><select id="txFund">' +
+            FUNDS.map(function(f){ return '<option value="' + f.key + '">' + f.name + '</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label>Сумма, EUR</label><input type="number" step="0.01" id="txAmount" placeholder="например 20" /></div>' +
+          '<div class="field"><label>Курс пая на день взноса, EUR</label><input type="number" step="0.0001" id="txNav" placeholder="например 13.87" /></div>' +
+          '<button type="submit" class="btn btn-primary">Добавить взнос</button>' +
+        '</form>' +
+      '</section>' +
+      '<section class="card" id="ledgerCard"><h2 class="card-title">Взносы</h2><div id="ledgerList"></div></section>' +
+      '<div class="footnote">Данные хранятся в твоей базе Supabase.<button class="sign-out-link" id="signOutBtn" style="margin:8px auto 0;">Выйти из аккаунта</button></div>';
+
+    document.getElementById('txDate').value = todayStr();
+    document.getElementById('addForm').addEventListener('submit', handleAddSubmit);
+    document.getElementById('signOutBtn').addEventListener('click', handleSignOut);
+    document.getElementById('modalOverlay').addEventListener('click', function(e){ if (e.target.id==='modalOverlay') closeModal(); });
+  }
+
+  function attachPeriodHandlers(){
+    var heroTabs = document.querySelector('.period-tabs[data-target="hero"]');
+    if (heroTabs){
+      Array.prototype.forEach.call(heroTabs.querySelectorAll('[data-period]'), function(btn){
+        btn.addEventListener('click', function(){ state.activePeriod = btn.getAttribute('data-period'); renderAll(); });
+      });
+    }
+  }
+
+  function renderAll(){
+    var agg = computeAggregates();
+    renderHero(agg);
+    renderStats(agg);
+    renderAllocation(agg);
+    renderFundsGrid(agg);
+    renderLedger();
+    attachPeriodHandlers();
+  }
+
+  /* ---------- auth + PIN gate ---------- */
+  var PIN_KEY = 'investments_pin_hash';
+
+  function showScreen(id){
+    ['authScreen','pinScreen','page'].forEach(function(sid){
+      var el = document.getElementById(sid);
+      if (sid===id) el.classList.remove('hidden'); else el.classList.add('hidden');
+    });
+  }
+
+  async function sha256Hex(str){
+    var enc = new TextEncoder().encode(str);
+    var buf = await crypto.subtle.digest('SHA-256', enc);
+    var bytes = new Uint8Array(buf);
+    var hex = '';
+    for (var i=0;i<bytes.length;i++){ hex += bytes[i].toString(16).padStart(2,'0'); }
+    return hex;
+  }
+
+  function setFieldError(id, msg){
+    var el = document.getElementById(id);
+    if (msg){ el.textContent = msg; el.classList.remove('hidden'); }
+    else { el.textContent = ''; el.classList.add('hidden'); }
+  }
+
+  async function handleLoginSubmit(e){
+    e.preventDefault();
+    setFieldError('loginError', '');
+    var email = document.getElementById('loginEmail').value.trim();
+    var password = document.getElementById('loginPassword').value;
+    if (!email || !password){ setFieldError('loginError', 'Заполни email и пароль'); return; }
+    var btn = document.getElementById('loginSubmitBtn');
+    btn.disabled = true; btn.textContent = 'Входим…';
+    var res = await sb.auth.signInWithPassword({ email:email, password:password });
+    btn.disabled = false; btn.textContent = 'Войти';
+    if (res.error){ setFieldError('loginError', 'Не удалось войти: ' + res.error.message); return; }
+    await afterLogin();
+  }
+
+  async function afterLogin(){
+    var pinHash = localStorage.getItem(PIN_KEY);
+    if (!pinHash) showPinSetup(); else showPinEntry(pinHash);
+  }
+
+  function showPinSetup(){
+    document.getElementById('pinHint').textContent = 'Придумай 4-значный PIN для этого устройства — он будет нужен при каждом открытии приложения.';
+    document.getElementById('pinConfirmField').classList.remove('hidden');
+    document.getElementById('pinSubmitBtn').textContent = 'Сохранить PIN';
+    document.getElementById('forgotPinBtn').classList.add('hidden');
+    document.getElementById('pinInput1').value = '';
+    document.getElementById('pinInput2').value = '';
+    setFieldError('pinError', '');
+    var form = document.getElementById('pinForm');
+    form.onsubmit = async function(e){
+      e.preventDefault();
+      var p1 = document.getElementById('pinInput1').value;
+      var p2 = document.getElementById('pinInput2').value;
+      if (!/^\d{4}$/.test(p1)){ setFieldError('pinError', 'PIN должен быть из 4 цифр'); return; }
+      if (p1 !== p2){ setFieldError('pinError', 'PIN не совпадает в обоих полях'); return; }
+      var hash = await sha256Hex(p1);
+      localStorage.setItem(PIN_KEY, hash);
+      await startApp();
+    };
+    showScreen('pinScreen');
+  }
+
+  function showPinEntry(expectedHash){
+    document.getElementById('pinHint').textContent = 'Введи PIN для этого устройства.';
+    document.getElementById('pinConfirmField').classList.add('hidden');
+    document.getElementById('pinSubmitBtn').textContent = 'Войти';
+    document.getElementById('forgotPinBtn').classList.remove('hidden');
+    document.getElementById('pinInput1').value = '';
+    setFieldError('pinError', '');
+    var form = document.getElementById('pinForm');
+    form.onsubmit = async function(e){
+      e.preventDefault();
+      var p1 = document.getElementById('pinInput1').value;
+      var hash = await sha256Hex(p1);
+      if (hash !== expectedHash){ setFieldError('pinError', 'Неверный PIN'); document.getElementById('pinInput1').value=''; return; }
+      await startApp();
+    };
+    showScreen('pinScreen');
+  }
+
+  async function handleSignOut(){
+    try { await sb.auth.signOut(); } catch(e){ /* ignore */ }
+    localStorage.removeItem(PIN_KEY);
+    location.reload();
+  }
+
+  async function startApp(){
+    showScreen('page');
+    await loadAll();
+    buildShell();
+    renderAll();
+  }
+
+  /* ---------- init ---------- */
+  async function init(){
+    document.getElementById('loginForm').addEventListener('submit', handleLoginSubmit);
+    document.getElementById('forgotPinBtn').addEventListener('click', handleSignOut);
+    var sessionRes = await sb.auth.getSession();
+    var session = sessionRes.data && sessionRes.data.session;
+    if (!session){ showScreen('authScreen'); return; }
+    await afterLogin();
+  }
+  init();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').catch(function(e){ console.error('SW register failed', e); });
+    });
+  }
+})();
+</script>
+</body>
+</html>
