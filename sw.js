@@ -1,4 +1,4 @@
-const CACHE_NAME = 'investments-v1';
+const CACHE_NAME = 'investments-v2';
 const SHELL_ASSETS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -23,18 +23,17 @@ self.addEventListener('fetch', (event) => {
   if (url.indexOf('supabase.co') !== -1 || event.request.method !== 'GET') {
     return;
   }
+  // Network-first: always try to get the latest version. Cache is only a
+  // fallback for when there's no connection at all.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || networkFetch;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
