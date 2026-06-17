@@ -112,6 +112,7 @@
   .fund-profit.good{color:var(--good);}
   .fund-profit.bad{color:var(--bad);}
   .fund-invested{font-size:10.5px;color:var(--muted);margin-top:6px;}
+  .fund-nav{font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
 
   /* ADD FORM */
   .field{margin-bottom:12px;}
@@ -564,11 +565,15 @@
       var pf = agg.perFund[f.key];
       var pg = pf.profit>=0?'good':'bad';
       var arrow = pf.profit>=0?'↑':'↓';
+      var priceInfo = state.prices[f.key]
+        ? '<div class="fund-nav">курс ' + state.prices[f.key].nav.toFixed(2) + ' € · ' + fmtDateShort(state.prices[f.key].asOf) + '</div>'
+        : '<div class="fund-nav">курс пока не обновлялся</div>';
       return '<div class="fund-card" data-fund="' + f.key + '">' +
         '<div class="fund-card-top"><span class="fund-dot" style="background:' + f.color + '"></span><span class="fund-name">' + f.name + '</span></div>' +
         '<div class="fund-val">' + fmtEUR(pf.current) + '</div>' +
         '<div class="fund-profit ' + pg + '">' + arrow + ' ' + fmtEUR(Math.abs(pf.profit)) + ' (' + fmtPct(pf.profitPct) + ')</div>' +
         '<div class="fund-invested">вложено ' + fmtEUR(pf.invested) + '</div>' +
+        priceInfo +
       '</div>';
     }).join('');
     document.getElementById('fundsGrid').innerHTML = html;
@@ -843,6 +848,13 @@
   }
 
   async function afterLogin(){
+    // PIN gate disabled by request — real login (email+password) already
+    // protects the data; the PIN code below is left in place in case it's
+    // wanted back later, just not called.
+    await startApp();
+  }
+
+  async function afterLoginWithPin(){
     var pinHash = localStorage.getItem(PIN_KEY);
     if (!pinHash) showPinSetup(); else showPinEntry(pinHash);
   }
