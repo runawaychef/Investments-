@@ -45,7 +45,7 @@
   }
   .page{max-width:480px;margin:0 auto;padding:20px 16px 64px;}
 
-  .topbar{display:flex;justify-content:center;align-items:center;margin-bottom:18px;}
+  .topbar{display:flex;justify-content:center;align-items:center;margin-bottom:18px;position:relative;}
   .page-title{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);}
   .updated-at{font-family:var(--mono);font-size:10px;color:var(--muted);}
   .icon-btn{background:var(--paper);border:1px solid var(--line);border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer;}
@@ -387,6 +387,49 @@
     return filtered.length>=2 ? filtered : points;
   }
 
+  async function refreshOneFund(fundKey){
+    var res = await sb.functions.invoke('fetch-nav', { body: { fundKey: fundKey } });
+    if (res.error) throw new Error(res.error.message || 'Не удалось вызвать функцию');
+    var data = res.data;
+    if (!data || data.nav === undefined || data.nav === null) throw new Error((data && data.error) || 'Курс не найден');
+    return data; // { nav, isin, asOf }
+  }
+
+  async function refreshAllPrices(){
+    setRefreshSpinning(true);
+    var failures = [];
+    for (var i=0;i<FUNDS.length;i++){
+      var f = FUNDS[i];
+      try {
+        var data = await refreshOneFund(f.key);
+        var nav = Number(data.nav);
+        var asOf = data.asOf || todayStr();
+        await upsertCurrentPrice(f.key, nav, asOf, 'swedbankrobur.fondlista.se');
+        await upsertFundHistoryPoint(f.key, asOf, nav);
+        state.prices[f.key] = { nav: nav, asOf: asOf, source: 'swedbankrobur.fondlista.se' };
+        if (!state.history[f.key]) state.history[f.key] = [];
+        upsertPoint(state.history[f.key], asOf, nav);
+      } catch(e){ failures.push(f.short + ': ' + e.message); }
+    }
+    await syncPortfolioSnapshot();
+    setRefreshSpinning(false);
+    if (failures.length>0) showToast('Не обновилось: ' + failures.join(' · '));
+    else showToast('Курсы обновлены');
+    renderAll();
+  }
+
+  function setRefreshSpinning(on){
+    var btn = document.getElementById('refreshBtn');
+    if (!btn) return;
+    if (on) btn.classList.add('spinning'); else btn.classList.remove('spinning');
+  }
+
+  async function ensureDailyRefresh(){
+    var today = todayStr();
+    if (state.lastDailyRefresh === today) return;
+    await refreshAllPrices();
+  }
+
   /* ---------- toast ---------- */
   var toastTimer = null;
   function showToast(msg){
@@ -710,6 +753,9 @@
     document.getElementById('page').innerHTML = '' +
       '<div class="topbar">' +
         '<div class="page-title">Investments</div>' +
+        '<button class="icon-btn" id="refreshBtn" title="Обновить курсы" style="position:absolute;right:16px;">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v6h-6"/></svg>' +
+        '</button>' +
       '</div>' +
       '<section class="card hero" id="hero"></section>' +
       '<div class="stats-row" id="statsRow"></div>' +
@@ -717,7 +763,7 @@
       '<div class="funds-grid" id="fundsGrid"></div>' +
       '<section class="card" id="addCard">' +
         '<h2 class="card-title">Добавить взнос</h2>' +
-        '<div class="card-sub">Курс вводится вручную — автообновление с сайта фонда добавим следующим шагом.</div>' +
+        '<div class="card-sub">Курс на день взноса — это то, что было у тебя при покупке, вводи вручную. Текущий курс по всем фондам обновляется само (значок ⟳ сверху).</div>' +
         '<form id="addForm">' +
           '<div class="field"><label>Дата</label><input type="date" id="txDate" /></div>' +
           '<div class="field"><label>Фонд</label><select id="txFund">' +
@@ -733,6 +779,7 @@
 
     document.getElementById('txDate').value = todayStr();
     document.getElementById('addForm').addEventListener('submit', handleAddSubmit);
+    document.getElementById('refreshBtn').addEventListener('click', function(){ refreshAllPrices(); });
     document.getElementById('signOutBtn').addEventListener('click', handleSignOut);
     document.getElementById('modalOverlay').addEventListener('click', function(e){ if (e.target.id==='modalOverlay') closeModal(); });
   }
@@ -851,6 +898,7 @@
     await loadAll();
     buildShell();
     renderAll();
+    ensureDailyRefresh().catch(function(e){ /* best-effort */ });
   }
 
   /* ---------- init ---------- */
