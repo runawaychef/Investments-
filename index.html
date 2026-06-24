@@ -72,7 +72,9 @@
   .stamp{position:absolute;top:14px;right:14px;width:60px;height:60px;border:1.4px dashed var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-10deg);font-family:var(--mono);font-size:8.5px;line-height:1.2;text-align:center;color:var(--accent);padding:6px;}
 
   .chart-area{margin-top:18px;}
-  .chart-minmax{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:4px;}
+  .chart-svg-wrap{position:relative;}
+  .chart-y-max{position:absolute;top:2px;right:0;font-family:var(--mono);font-size:10px;color:var(--muted);}
+  .chart-y-min{position:absolute;bottom:2px;right:0;font-family:var(--mono);font-size:10px;color:var(--muted);}
   .chart-svg-wrap{width:100%;}
   .chart-empty{font-size:12.5px;color:var(--muted);padding:28px 0;text-align:center;}
 
@@ -494,8 +496,9 @@
       '<path d="' + linePath + '" fill="none" stroke="' + hexColor + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
       '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4.5" fill="' + hexColor + '"/>' +
       '</svg>';
-    var minmax = '<div class="chart-minmax"><span>' + max.toFixed(2) + ' €</span><span>' + min.toFixed(2) + ' €</span></div>';
-    return '<div class="chart-svg-wrap">' + minmax + svg + '</div>';
+    var yLabels = '<span class="chart-y-max">' + max.toFixed(2) + ' €</span>' +
+                  '<span class="chart-y-min">' + min.toFixed(2) + ' €</span>';
+    return '<div class="chart-svg-wrap">' + svg + yLabels + '</div>';
   }
 
   function periodTabsHtml(activeKey, targetAttr){
